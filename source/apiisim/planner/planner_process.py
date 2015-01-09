@@ -30,19 +30,26 @@ def log_error(func):
 class WorkerThread(threading.Thread):
     def __init__(self, planner, params, job_queue, notification_queue):
         threading.Thread.__init__(self)
+        self.exit_code = 1
         self._planner = planner
         self._params = params
         self._job_queue = job_queue
         self._notification_queue = notification_queue
-        self.exit_code = 1
+        self._cancelled = False
+
+    def stop(self):
+        self._cancelled = True
+        if self._trip_calculator:
+            self._trip_calculator.stop()
 
     @log_error
     def run(self):
         trace = self._job_queue.get()
         logging.info("WorkerThread started on job %s" % trace)
-        trip_calculator = PlanTripCalculator(self._planner, self._params, self._notification_queue)
+        self._trip_calculator = PlanTripCalculator(self._planner, self._params, self._notification_queue)
         try:
-            trip_calculator.compute_trip(trace)
+            if not self._cancelled:
+                self._trip_calculator.compute_trip(trace)
             self.exit_code = 0
         except Exception as e:
             logging.error("compute_trip(%s): %s", trace, e)
@@ -60,17 +67,25 @@ class CalculationManager(threading.Thread):
         self._traces = traces
         self._termination_queue = termination_queue
         self._notification_queue = notification_queue
+        self._workers = []
+        self._cancelled = False
+
+    def stop(self):
+        self._cancelled = True
+        for worker in self._workers:
+            worker.stop()
 
     @log_error
     def run(self):
         logging.info("CalculationManager thread started")
         job_queue = Queue.Queue()
         i = 0
-        workers = []
         for trace in self._traces:
+            if self._cancelled:
+                continue
             i += 1
             worker = WorkerThread(self._planner, self._params, job_queue, self._notification_queue)
-            workers.append(worker)
+            self._workers.append(worker)
             job_queue.put(trace)
             worker.start()
             # Uncomment the line below to run workers sequentially.
@@ -78,7 +93,7 @@ class CalculationManager(threading.Thread):
             worker.join()
             if i == self._params.MaxTrips:
                 break
-        for w in workers:
+        for w in self._workers:
             w.join()
         self._termination_queue.put("FINISHED")
         logging.info("CalculationManager thread finished")
@@ -95,12 +110,18 @@ class PlannerProcessHandler(object):
         else:
             self._notif_queue = notification_queue
         self._calculation_thread = None
+        self._cancelled = False
 
         # AccessTime is not mandatory but None value is not recognized by .xsd
         if not self._request.Departure.AccessTime:
             self._request.Departure.AccessTime = timedelta()
         if not self._request.Arrival.AccessTime:
             self._request.Arrival.AccessTime = timedelta()
+
+    def stop(self):
+        self._cancelled = True
+        if self._calculation_thread:
+            self._calculation_thread.stop()
 
     def _send_status(self, status, error=None):
         logging.debug("Sending <%s> status", status)
@@ -130,8 +151,8 @@ class PlannerProcessHandler(object):
                                                       self._termination_queue)
         self._calculation_thread.start()
 
-        msg = self._termination_queue.get()
-        if msg == "CANCEL":
+        _ = self._termination_queue.get()
+        if self._cancelled:
             self._notif_queue.put(PlanTripCancellationResponse(RequestId=self._request_id))
             logging.debug("Request cancelled by client")
         else:

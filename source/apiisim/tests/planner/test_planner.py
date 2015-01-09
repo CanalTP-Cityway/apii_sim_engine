@@ -79,7 +79,7 @@ class TestPlanner(unittest.TestCase):
         self.assertEquals(calculator._filter_traces([[1, 2, 3, 4], [1, 3, 4], [4, 3, 1],
                                                      [2, 1, 4], [3, 4, 2], [3, 2, 4],
                                                      [1, 4, 3, 2], [4, 3, 1, 2], [3, 2, 1, 4]]),
-                          [[1, 3, 4], [4, 3, 1], [3, 4, 2], [1, 4, 3, 2]])
+                          [[1, 3, 4], [4, 3, 1], [1, 4, 3, 2]])
 
     def test_compute_traces(self):
         request = PlanTripRequestType()
@@ -88,13 +88,21 @@ class TestPlanner(unittest.TestCase):
         request.DepartureTime = datetime.now()
         calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
         calculator.MAX_TRACE_LENGTH = 3
-        self.assertEquals(calculator.compute_traces(), [[1, 4, 3]])
+        # arrival mis not geographic compliant
+        self.assertEquals(calculator.compute_traces(), [])
+
+        request.Departure = new_location(1.4, 1.4)
+        request.Arrival = new_location(4, 4)
+        calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
+        calculator.MAX_TRACE_LENGTH = 3
+        self.assertEquals(calculator.compute_traces(), [[2, 3, 4]])
 
         request.Departure = new_location(2, 2)
         request.Arrival = new_location(4, 4)
         calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
         calculator.MAX_TRACE_LENGTH = 3
-        self.assertEquals(calculator.compute_traces(), [[2, 3, 4]])
+        # origin outside of mis shape
+        self.assertEquals(calculator.compute_traces(), [])
 
         request.Departure = new_location(1, 1)
         request.Arrival = new_location(4, 4)
@@ -103,15 +111,23 @@ class TestPlanner(unittest.TestCase):
         self.assertEquals(calculator.compute_traces(), [[1, 4]])
 
         request.Departure = new_location(1, 1)
-        request.Arrival = new_location(2, 2)
+        request.Arrival = new_location(1.4, 1.4)
         calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
         calculator.MAX_TRACE_LENGTH = 3
         self.assertEquals(calculator.compute_traces(), [[1, 2]])
+
+        request.Departure = new_location(1, 1)
+        request.Arrival = new_location(2, 2)
+        calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
+        calculator.MAX_TRACE_LENGTH = 3
+        # arrival outside of mis shape
+        self.assertEquals(calculator.compute_traces(), [])
 
         request.Departure = new_location(1, 2)
         request.Arrival = new_location(3, 4)
         calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
         calculator.MAX_TRACE_LENGTH = 3
+        # unfound departure or arrival
         self.assertEquals(calculator.compute_traces(), [])
 
     def test_get_transfers(self):
@@ -191,18 +207,28 @@ class TestPlanner(unittest.TestCase):
     def test_get_surrounding_mis(self):
         request = PlanTripRequestType()
         calculator = PlanTripCalculator(self._planner, request, Queue.Queue())
-        position = LocationStructure(Longitude=1, Latitude=1)
         date = date_type(year=2010, month=4, day=8)
+
+        position = LocationStructure(Longitude=1, Latitude=1)
         self.assertEquals(calculator._get_surrounding_mis(position, date), {1})
 
         position = LocationStructure(Longitude=3, Latitude=3)
-        self.assertEquals(calculator._get_surrounding_mis(position, date), {3})
+        # MIS 3 excluded (not geographic compliant)
+        self.assertEquals(calculator._get_surrounding_mis(position, date), set([]))
 
         position = LocationStructure(Longitude=7, Latitude=33)
         self.assertEquals(calculator._get_surrounding_mis(position, date), set([]))
 
         position = LocationStructure(Longitude=0, Latitude=0)
-        self.assertEquals(calculator._get_surrounding_mis(position, date), {1, 2, 3})
+        # MIS 3 excluded (not geographic compliant)
+        self.assertEquals(calculator._get_surrounding_mis(position, date), {1, 2})
+
+        position = LocationStructure(Longitude=1.4, Latitude=1.4)
+        self.assertEquals(calculator._get_surrounding_mis(position, date), {2})
+
+        position = LocationStructure(Longitude=2, Latitude=2)
+        # outside of mis shape
+        self.assertEquals(calculator._get_surrounding_mis(position, date), set([]))
 
     def test_get_mis_modes(self):
         request = PlanTripRequestType()

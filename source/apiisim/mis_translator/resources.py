@@ -4,8 +4,8 @@ import json
 from traceback import format_exc
 
 from flask_restful import abort, Resource
-from flask import request, Response
-from apiisim.common.mis_plan_trip import ItineraryResponseType, StatusType
+from flask import request as flask_request, Response
+from apiisim.common.mis_plan_trip import ItineraryResponseType, StatusType, SelfDriveConditionType
 from apiisim.common.mis_plan_summed_up_trip import SummedUpItinerariesResponseType
 from apiisim.common import AlgorithmEnum, StatusCodeEnum, SelfDriveModeEnum, TripPartEnum, \
     TransportModeEnum, PlanSearchOptions, string_to_bool, \
@@ -220,6 +220,12 @@ class RequestProcessor(object):
     def _new_response(self):
         return None
 
+    def _mis_request(self, params):
+        pass
+
+    def _marshal_response(self):
+        return None
+
     def process(self):
         params = self._parse_request()
         resp_code = 200
@@ -325,19 +331,19 @@ class SummedUpItinerariesRequestProcessor(RequestProcessor):
 
 class Capabilities(Resource):
     def get(self, mis_name=""):
-        return CapabilitiesRequestProcessor(mis_name, request).process()
+        return CapabilitiesRequestProcessor(mis_name, flask_request).process()
 
 
 class Stops(Resource):
     def get(self, mis_name=""):
-        return StopsRequestProcessor(mis_name, request).process()
+        return StopsRequestProcessor(mis_name, flask_request).process()
 
 
 class Itineraries(Resource):
     def post(self, mis_name=""):
-        return ItineraryRequestProcessor(mis_name, request).process()
+        return ItineraryRequestProcessor(mis_name, flask_request).process()
 
 
 class SummedUpItineraries(Resource):
     def post(self, mis_name=""):
-        return SummedUpItinerariesRequestProcessor(mis_name, request).process()
+        return SummedUpItinerariesRequestProcessor(mis_name, flask_request).process()

@@ -23,6 +23,7 @@ class Mis(Base):
     api_key = Column(String(50))
     start_date = Column(DATE)
     end_date = Column(DATE)
+    shape = Column(Geography(geometry_type="MULTIPOLYGON", srid=4326))
     geographic_position_compliant = Column(Boolean)
     multiple_starts_and_arrivals = Column(Integer)
     created_at = Column(TIMESTAMP)

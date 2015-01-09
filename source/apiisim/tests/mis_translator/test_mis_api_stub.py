@@ -61,19 +61,19 @@ class TestStub(unittest.TestCase):
         # geographic order
         best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
             (self._stop_choisy(),
-             [self._stop_morillons(), self._stop_orly(), self._stop_thiais()], 0)
+             [self._stop_morillons(), self._stop_orly(), self._stop_thiais()])
         self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:126')  #Thiais
         self.assertEqual(round(distance), 743.0)
         self.assertEqual(duration, timedelta())
         best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
             (self._stop_choisy(),
-             [self._stop_morillons(), self._stop_orly()], 0)
+             [self._stop_morillons(), self._stop_orly()])
         self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:57')  #Orly
         self.assertEqual(round(distance), 2476.0)
         self.assertEqual(duration, timedelta(minutes=2))
         best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
             (self._stop_choisy(),
-             [self._stop_morillons()], 0)
+             [self._stop_morillons()])
         self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:141')  #Morillons
         self.assertEqual(round(distance), 4055.0)
         self.assertEqual(duration, timedelta(minutes=4))
@@ -81,15 +81,7 @@ class TestStub(unittest.TestCase):
         # test with inactive access_time
         best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
             (self._stop_choisy(3),
-             [self._stop_morillons(), self._stop_orly(), self._stop_thiais()], 0)
-        self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:126')  #Thiais
-        self.assertEqual(round(distance), 743.0)
-        self.assertEqual(duration, timedelta())
-
-        # test with active access_time on departure
-        best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
-            (self._stop_choisy(3),
-             [self._stop_morillons(), self._stop_orly(), self._stop_thiais()], 1)
+             [self._stop_morillons(), self._stop_orly(), self._stop_thiais()])
         self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:126')  #Thiais
         self.assertEqual(round(distance), 743.0)
         self.assertEqual(duration, timedelta())
@@ -97,23 +89,7 @@ class TestStub(unittest.TestCase):
         # test with active access_time on arrival
         best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
             (self._stop_choisy(3),
-             [self._stop_morillons(), self._stop_orly(), self._stop_thiais(3)], 1)
-        self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:57')  #Orly
-        self.assertEqual(round(distance), 2476.0)
-        self.assertEqual(duration, timedelta(minutes=2))
-
-        # test with active access_time on arrival in case of "arrival at"
-        best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
-            (self._stop_choisy(3),
-             [self._stop_morillons(), self._stop_orly(), self._stop_thiais(3)], -1)
-        self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:126')  #Thiais
-        self.assertEqual(round(distance), 743.0)
-        self.assertEqual(duration, timedelta())
-
-        # test with active access_time on arrival in case of "arrival at"
-        best_arrival, distance, duration = self.stub_transilien._get_earliest_location\
-            (self._stop_choisy(3),
-             [self._stop_morillons(3), self._stop_orly(3), self._stop_thiais()], -1)
+             [self._stop_morillons(), self._stop_orly(), self._stop_thiais(3)])
         self.assertEqual(best_arrival.PlaceTypeId, 'stop_area:DUA:SA:4:57')  #Orly
         self.assertEqual(round(distance), 2476.0)
         self.assertEqual(duration, timedelta(minutes=2))

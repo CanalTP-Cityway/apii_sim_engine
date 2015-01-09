@@ -59,7 +59,7 @@ class MisApi(object):
             # skip empty Centroid
             if "Latitude" in quay["Centroid"]["Location"]:
                 stops.append(
-                    Stop(code=quay["PrivateCode"],
+                    Stop(code=quay["id"],
                          name=quay["Name"],
                          lat=float(quay["Centroid"]["Location"]["Latitude"]),
                          long=float(quay["Centroid"]["Location"]["Longitude"])))

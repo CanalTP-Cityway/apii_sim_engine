@@ -8,6 +8,7 @@ CREATE TABLE mis(
     api_key varchar(50),
     start_date date,
     end_date date,
+    shape GEOGRAPHY(MultiPolygon, 4326),
     geographic_position_compliant boolean,
     multiple_starts_and_arrivals integer,
     created_at timestamp,

@@ -76,8 +76,7 @@ plan_trip_existence_notification_format = dict(type='object', properties={
     'Arrival': location_point_format,
     'providers': {'type': 'array',
                   'items': [provider_format]},
-}, required=['RequestId', 'DepartureTime', 'ArrivalTime', 'ComposedTripId',
-             'Duration', 'Departure', 'Arrival', 'providers'])
+}, required=['RequestId', 'ComposedTripId', 'Departure', 'Arrival', 'providers'])
 
 step_end_point_format = dict(type='object', properties={
     'TripStopPlace': trip_stop_place_format,

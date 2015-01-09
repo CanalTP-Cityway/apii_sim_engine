@@ -203,7 +203,7 @@ def parse_steps(steps):
     for step in steps:
         ret.append(
             StepType(
-                id=step["id"],
+                id=step["id"] if "id" in step else "",
                 Departure=parse_end_point(step["Departure"], step_end_point=True),
                 Arrival=parse_end_point(step["Arrival"], step_end_point=True),
                 Duration=xsd_duration_to_timedelta(step["Duration"])))
@@ -326,6 +326,7 @@ class MisApi(object):
         self._api_url = mis.api_url
         self._api_key = mis.api_key
         self._name = mis.name
+        self._shape = mis.shape
         self._geographic_position_compliant = mis.geographic_position_compliant
         self._multiple_starts_and_arrivals = mis.multiple_starts_and_arrivals
         self._http = httplib2.Http()
@@ -341,6 +342,9 @@ class MisApi(object):
 
     def get_api_url(self):
         return self._api_url
+
+    def get_shape(self):
+        return self._shape
 
     def _send_request(self, resource, data):
         url = self._api_url + ("/" if self._api_url[-1] != "/" else "") + resource

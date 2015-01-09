@@ -96,6 +96,15 @@ class PlanTripCalculator(object):
         all_mises = self._db_session.query(metabase.Mis).all()
 
         for mis in all_mises:
+            if not mis.geographic_position_compliant:
+                continue
+            if mis.shape is not None:
+                intersect = self._db_session.query(ST_Intersects(
+                        StGeogFromText('POINT(%s %s)' % (position.Longitude, position.Latitude)),
+                        mis.shape)).one()[0]
+                if not intersect:
+                    continue
+                logging.debug("INTERSECTS SHAPE OF %s", mis.name)
             if self._db_session.query(metabase.Stop.id) \
                     .filter(metabase.Stop.mis_id == mis.id) \
                     .filter(ST_DWithin(
@@ -338,8 +347,8 @@ class PlanTripCalculator(object):
 
         return ret
 
-    def _init_request(self, request):
-        request.id = self._params.clientRequestId
+    def _init_request(self, request, trace_id, step=1):
+        request.id = "{0}|{1}|{2}".format(self._params.clientRequestId, trace_id, step)  # MANTIS 30757
         request.Algorithm = self._params.Algorithm
         request.modes = self._params.modes
         request.selfDriveConditions = self._params.selfDriveConditions
@@ -351,7 +360,7 @@ class PlanTripCalculator(object):
         ret = []  # [(mis_api, DetailedTrip)]
 
         detailed_request = ItineraryRequestType()
-        self._init_request(detailed_request)
+        self._init_request(detailed_request, trace_id)
         detailed_request.multiDepartures = multiDeparturesType()
         detailed_request.multiDepartures.Departure = [self._params.Departure]
         detailed_request.multiDepartures.Arrival = self._params.Arrival
@@ -491,18 +500,25 @@ class PlanTripCalculator(object):
         if len(resp_trips) == 0:
             return
         if clockwise:
-            best_time = min([x.Arrival.DateTime for x in resp_trips])
-            to_del = [i for i, x in enumerate(resp_trips) if x.Arrival.DateTime != best_time]
+            # best arrival time (earliest), minimal trip duration in case of equality
+            s = [(i, (x.Arrival.DateTime, x.Arrival.DateTime - x.Departure.DateTime)) for i, x
+                 in enumerate(resp_trips)]
+            s.sort(key=lambda t: t[1])
         else:
-            best_time = max([x.Departure.DateTime for x in resp_trips])
-            to_del = [i for i, x in enumerate(resp_trips) if x.Departure.DateTime != best_time]
-
+            # best departure time (tardiest), minimal trip duration in case of equality
+            s = [(i, (x.Departure.DateTime, x.Departure.DateTime - x.Arrival.DateTime)) for i, x in
+                 enumerate(resp_trips)]
+            s.sort(key=lambda t: t[1], reverse=True)
+        to_del = [elem[0] for elem in s[1::]]
         to_del = set(to_del)
         for i in sorted(to_del, reverse=True):
             trip = resp_trips[i]
             logging.debug("Remove bad trip from MIS response %s (%s) -> %s (%s)", trip.Departure.TripStopPlace.id,
                           trip.Departure.DateTime, trip.Arrival.TripStopPlace.id, trip.Arrival.DateTime)
             resp_trips.pop(i)
+
+        while len(resp_trips) > 1:
+            resp_trips.pop(1)
 
     def _clear_access_time(self, departures, arrivals):
         for d in departures:
@@ -570,9 +586,9 @@ class PlanTripCalculator(object):
                 rep_dep, rep_lnk = tuple(
                     zip(*sorted(zip(departures, linked_stops), key=lambda pair: pair[0].departure_time, reverse=True)))
                 for s in rep_dep:
-                    s.AccessTime = s.departure_time - rep_dep[0].departure_time
+                    s.AccessTime = rep_dep[0].departure_time - s.departure_time
                 for s in rep_lnk:
-                    s.AccessTime = s.departure_time - rep_lnk[0].departure_time
+                    s.AccessTime = rep_lnk[0].departure_time - s.departure_time
             else:
                 rep_dep = departures
                 rep_lnk = []
@@ -582,8 +598,10 @@ class PlanTripCalculator(object):
                                        rep_lnk[0].departure_time if rep_lnk else None,
                                        rep_dep, rep_arr, rep_lnk, clockwise=False)
 
-    def _process_calculation_step(self, detailed_trace, idx, detailed, clockwise,
-                                  origin_mis=False, reversal_mis=False, log_info=""):
+    def _process_calculation_step(self, detailed_trace, trace_id, idx,
+                                  detailed, clockwise,
+                                  origin_mis=False, reversal_mis=False,
+                                  log_info=""):
         def mis_stops(tr_idx, tr_clockwise):
             if tr_clockwise:
                 return detailed_trace[tr_idx]
@@ -601,7 +619,7 @@ class PlanTripCalculator(object):
 
         # build request
         request = ItineraryRequestType() if detailed else SummedUpItinerariesRequestType()
-        self._init_request(request)
+        self._init_request(request, trace_id, self.step)
         self._clear_access_time(departures, arrivals)
         if detailed:
             if len(departures) > 1:
@@ -629,9 +647,9 @@ class PlanTripCalculator(object):
             if origin_mis:
                 request.ArrivalTime = self._params.ArrivalTime
             else:
-                request.ArrivalTime = min([x.departure_time for x in arrivals])
+                request.ArrivalTime = max([x.departure_time for x in arrivals])
                 for a in arrivals:
-                    a.AccessTime = a.departure_time - request.ArrivalTime
+                    a.AccessTime = request.ArrivalTime - a.departure_time
 
         # send request
         if self._cancelled:
@@ -702,8 +720,11 @@ class PlanTripCalculator(object):
 
         logging.info("Processing first pass (left->right) that optimize arrival time...")
         for i in range(n - 1):
-            self._process_calculation_step(detailed_trace, i, detailed=False, clockwise=True, origin_mis=(i == 0))
-        _, trips = self._process_calculation_step(detailed_trace, n - 1, detailed=False, clockwise=True,
+            self._process_calculation_step(detailed_trace, trace_id, i,
+                                           detailed=False, clockwise=True,
+                                           origin_mis=(i == 0))
+        _, trips = self._process_calculation_step(detailed_trace, trace_id, n - 1,
+                                                  detailed=False, clockwise=True,
                                                   reversal_mis=True,
                                                   log_info="Processing second pass (right->left) that optimize "
                                                            "departure time")
@@ -713,22 +734,25 @@ class PlanTripCalculator(object):
         notif = PlanTripExistenceNotificationResponseType(
             RequestId=self._params.clientRequestId,
             ComposedTripId=trace_id,
-            DepartureTime=self._params.DepartureTime,
+            # DepartureTime=self._params.DepartureTime,
             ArrivalTime=best_arrival_time,
-            Duration=best_arrival_time - self._params.DepartureTime,
+            #Duration=best_arrival_time - self._params.DepartureTime,
             providers=providers,
             Departure=self._params.Departure,
             Arrival=self._params.Arrival)
         self._notif_queue.put(notif)
 
         for i in range(n - 2, 0, -1):
-            self._process_calculation_step(detailed_trace, i, detailed=False, clockwise=False)
-        ret.append(self._process_calculation_step(detailed_trace, 0, detailed=True, clockwise=False,
+            self._process_calculation_step(detailed_trace, trace_id, i,
+                                           detailed=False, clockwise=False)
+        ret.append(self._process_calculation_step(detailed_trace, trace_id, 0,
+                                                  detailed=True, clockwise=False,
                                                   reversal_mis=True,
                                                   log_info="Processing third pass (left->right) that give "
                                                            "detailed results"))
         for i in range(1, n):
-            ret.append(self._process_calculation_step(detailed_trace, i, detailed=True, clockwise=True))
+            ret.append(self._process_calculation_step(detailed_trace, trace_id, i,
+                                                      detailed=True, clockwise=True))
 
         return ret
 
@@ -744,8 +768,11 @@ class PlanTripCalculator(object):
 
         logging.info("Processing first pass (right->left) that optimize departure time...")
         for i in range(n - 1, 0, -1):
-            self._process_calculation_step(detailed_trace, i, detailed=False, clockwise=False, origin_mis=(i == n - 1))
-        _, trips = self._process_calculation_step(detailed_trace, 0, detailed=False, clockwise=False,
+            self._process_calculation_step(detailed_trace, trace_id, i,
+                                           detailed=False, clockwise=False,
+                                           origin_mis=(i == n - 1))
+        _, trips = self._process_calculation_step(detailed_trace, trace_id, 0,
+                                                  detailed=False, clockwise=False,
                                                   reversal_mis=True,
                                                   log_info="Processing second pass (left->right) that optimize "
                                                            "arrival time")
@@ -756,21 +783,24 @@ class PlanTripCalculator(object):
             RequestId=self._params.clientRequestId,
             ComposedTripId=trace_id,
             DepartureTime=best_departure_time,
-            ArrivalTime=self._params.ArrivalTime,
-            Duration=self._params.ArrivalTime - best_departure_time,
+            # ArrivalTime=self._params.ArrivalTime,
+            #Duration=self._params.ArrivalTime - best_departure_time,
             providers=providers,
             Departure=self._params.Departure,
             Arrival=self._params.Arrival)
         self._notif_queue.put(notif)
 
         for i in range(1, n - 1):
-            self._process_calculation_step(detailed_trace, i, detailed=False, clockwise=True)
-        ret.append(self._process_calculation_step(detailed_trace, n - 1, detailed=True, clockwise=True,
+            self._process_calculation_step(detailed_trace, trace_id, i,
+                                           detailed=False, clockwise=True)
+        ret.append(self._process_calculation_step(detailed_trace, trace_id, n - 1,
+                                                  detailed=True, clockwise=True,
                                                   reversal_mis=True,
                                                   log_info="Processing third pass (right->left) that give "
                                                            "detailed results"))
         for i in range(n - 2, -1, -1):
-            ret.append(self._process_calculation_step(detailed_trace, i, detailed=True, clockwise=False))
+            ret.append(self._process_calculation_step(detailed_trace, trace_id, i,
+                                                      detailed=True, clockwise=False))
 
         ret.reverse()
         return ret

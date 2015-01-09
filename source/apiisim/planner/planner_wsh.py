@@ -104,11 +104,11 @@ def parse_request(request):
 
 # Check if we've received a cancellation request
 class CancellationListener(threading.Thread):
-    def __init__(self, connection, params, queue):
+    def __init__(self, connection, params, runner):
         threading.Thread.__init__(self)
         self._connection = connection
         self._params = params
-        self._queue = queue
+        self._runner = runner
 
     @log_error
     def run(self):
@@ -116,14 +116,14 @@ class CancellationListener(threading.Thread):
         while True:
             msg = self._connection.ws_stream.receive_message()
             logging.debug("<CancellationListener> Received message %s", msg)
-            # if msg is None:
-            # # Connection has been closed
-            # break
+            if msg is None:
+                # Connection has been closed
+                break
             try:
                 msg = json.loads(msg)
                 if "PlanTripCancellationRequest" in msg \
                         and msg["PlanTripCancellationRequest"]["RequestId"] == self._params.clientRequestId:
-                    self._queue.put("CANCEL")
+                    self._runner.stop()
                     break
             except:
                 pass
@@ -168,7 +168,10 @@ class NotificationThread(threading.Thread):
 class ConnectionHandler(object):
     def __init__(self, connection):
         self._connection = connection
+        self._request_id = -1
         self._notif_queue = Queue.Queue()
+        self._notif_thread = None
+        self._cancellation_thread = None
 
     def _send_status(self, status, error=None):
         logging.debug("Sending <%s> status", status)
@@ -204,6 +207,8 @@ class ConnectionHandler(object):
             raise
 
         runner = PlannerProcessHandler(planner, params, self._notif_queue)
+        self._cancellation_thread = CancellationListener(self._connection, params, runner)
+        self._cancellation_thread.start()
         runner.process()
 
     def __del__(self):

@@ -1,19 +1,19 @@
 BEGIN;
 
-INSERT INTO mis (name, comment, api_url, api_key, start_date, end_date, 
+INSERT INTO mis (name, comment, api_url, api_key, start_date, end_date, shape,
                  geographic_position_compliant, multiple_starts_and_arrivals) VALUES
     ('mis1', 'comment1', 'mis1_url', '', DATE '2007-05-16', 
-     DATE '2016-05-16', TRUE, 0),
+     DATE '2016-05-16', NULL, TRUE, 0),
     ('mis2', 'comment2', 'mis2_url', '', DATE '2008-02-19', 
-     DATE '2016-04-16', TRUE, 0),
+     DATE '2016-04-16', st_geogfromtext('SRID=4326;MULTIPOLYGON(((1.5 -1.5, 1.5 1.5, -1.5 1.5, -1.5 -1.5, 1.5 -1.5)))'), TRUE, 0),
     ('mis3', 'comment3', 'mis3_url', '', DATE '2008-02-19', 
-     DATE '2016-04-16', TRUE, 1),
+     DATE '2016-04-16', NULL, FALSE, 1),
     ('mis4', 'comment4', 'mis4_url', '', DATE '2008-02-19', 
-     DATE '2016-04-16', TRUE, 1),
+     DATE '2016-04-16', NULL, TRUE, 1),
     ('mis5', 'comment5', 'mis5_url', '', DATE '2008-02-19', 
-     DATE '2016-04-16', TRUE, 1),
+     DATE '2016-04-16', NULL, TRUE, 1),
     ('mis6', 'comment6', 'mis6_url', '', DATE '2008-02-19', 
-     DATE '2016-04-16', TRUE, 1);
+     DATE '2016-04-16', NULL, TRUE, 1);
 
 INSERT INTO stop (code, mis_id, name, lat, long) VALUES
     ('stop_code10', 1, '', 1, 1),
@@ -21,7 +21,7 @@ INSERT INTO stop (code, mis_id, name, lat, long) VALUES
     ('stop_code30', 3, '', 3, 3),
     ('stop_code40', 4, '', 4, 4),
     ('stop_code11', 1, '', 0, 0),
-    ('stop_code21', 2, '', 0, 0),
+    ('stop_code21', 2, '', 1.4, 1.4),
     ('stop_code31', 3, '', 0, 0),
     ('stop_code41', 4, '', 8, 8),
     ('stop_code12', 1, '', 0, 0),
